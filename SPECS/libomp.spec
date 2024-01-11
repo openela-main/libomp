@@ -1,7 +1,8 @@
-%global maj_ver 15
-%global libomp_version %{maj_ver}.0.7
-#global rc_ver 1
+%global maj_ver 16
+%global libomp_version %{maj_ver}.0.6
+#global rc_ver 4
 %global libomp_srcdir openmp-%{libomp_version}%{?rc_ver:rc%{rc_ver}}.src
+%global cmake_srcdir cmake-%{libomp_version}%{?rc_ver:rc%{rc_ver}}.src
 
 
 %ifarch ppc64le
@@ -18,7 +19,7 @@
 
 Name: libomp
 Version: %{libomp_version}%{?rc_ver:~rc%{rc_ver}}
-Release: 1%{?dist}
+Release: 3%{?dist}
 Summary: OpenMP runtime for clang
 
 License: NCSA
@@ -28,6 +29,8 @@ Source1: https://github.com/llvm/llvm-project/releases/download/llvmorg-%{libomp
 Source2: release-keys.asc
 Source3: run-lit-tests
 Source4: lit.fedora.cfg.py
+Source5:	https://github.com/llvm/llvm-project/releases/download/llvmorg-%{libomp_version}%{?rc_ver:-rc%{rc_ver}}/%{cmake_srcdir}.tar.xz
+Source6:	https://github.com/llvm/llvm-project/releases/download/llvmorg-%{libomp_version}%{?rc_ver:-rc%{rc_ver}}/%{cmake_srcdir}.tar.xz.sig
 
 BuildRequires: clang
 # For clang-offload-packager
@@ -59,6 +62,7 @@ OpenMP runtime for clang.
 
 %package devel
 Summary: OpenMP header files
+Requires: %{name}%{?isa} = %{version}-%{release}
 Requires: clang-resource-filesystem%{?isa} = %{version}
 
 %description devel
@@ -83,6 +87,12 @@ OpenMP regression tests
 
 %prep
 %{gpgverify} --keyring='%{SOURCE2}' --signature='%{SOURCE1}' --data='%{SOURCE0}'
+%{gpgverify} --keyring='%{SOURCE2}' --signature='%{SOURCE6}' --data='%{SOURCE5}'
+%setup -T -q -b 5 -n %{cmake_srcdir}
+# TODO: It would be more elegant to set -DLLVM_COMMON_CMAKE_UTILS=%{_builddir}/%{cmake_srcdir},
+# but this is not a CACHED variable, so we can't actually set it externally :(
+cd ..
+mv %{cmake_srcdir} cmake
 %autosetup -n %{libomp_srcdir} -p2
 
 %build
@@ -97,7 +107,7 @@ cd %{_vpath_builddir}
 	-DLIBOMP_INSTALL_ALIASES=OFF \
 	-DCMAKE_MODULE_PATH=%{_libdir}/cmake/llvm \
 	-DLLVM_DIR=%{_libdir}/cmake/llvm \
-	-DCMAKE_INSTALL_INCLUDEDIR=%{_libdir}/clang/%{libomp_version}/include \
+	-DCMAKE_INSTALL_INCLUDEDIR=%{_libdir}/clang/%{maj_ver}/include \
 %if 0%{?__isa_bits} == 64
 	-DOPENMP_LIBDIR_SUFFIX=64 \
 %else
@@ -119,10 +129,13 @@ cd %{_vpath_builddir}
 %global lit_cfg %{libomp_testdir}/%{_arch}.site.cfg.py
 %global lit_fedora_cfg %{_datadir}/libomp/lit.fedora.cfg.py
 
+# Install test files
+cd ..
 install -d %{buildroot}%{libomp_srcdir}/runtime
 cp -R runtime/test  %{buildroot}%{libomp_srcdir}/runtime
 cp -R runtime/src  %{buildroot}%{libomp_srcdir}/runtime
 
+cd %{_vpath_builddir}
 # Generate lit config files.  Strip off the last line that initiates the
 # test run, so we can customize the configuration.
 head -n -1 runtime/test/lit.site.cfg >> %{buildroot}%{lit_cfg}
@@ -136,6 +149,7 @@ echo "lit_config.load_config(config, '%{lit_fedora_cfg}')" >> %{buildroot}%{lit_
 # Install test script
 install -d %{buildroot}%{_libexecdir}/tests/libomp
 install -m 0755 %{SOURCE3} %{buildroot}%{_libexecdir}/tests/libomp
+
 
 %endif
 
@@ -154,29 +168,37 @@ cd %{_vpath_builddir}
 %{_libdir}/libarcher.so
 %endif
 %ifnarch %{ix86} %{arm}
+# libomptarget is not supported on 32-bit systems.
 %{_libdir}/libomptarget.rtl.amdgpu.so.%{maj_ver}
+%{_libdir}/libomptarget.rtl.amdgpu.nextgen.so.%{maj_ver}
 %{_libdir}/libomptarget.rtl.cuda.so.%{maj_ver}
+%{_libdir}/libomptarget.rtl.cuda.nextgen.so.%{maj_ver}
 %{_libdir}/libomptarget.rtl.%{libomp_arch}.so.%{maj_ver}
-%endif
+%{_libdir}/libomptarget.rtl.%{libomp_arch}.nextgen.so.%{maj_ver}
 %{_libdir}/libomptarget.so.%{maj_ver}
+%endif
 
 %files devel
-%{_libdir}/clang/%{libomp_version}/include/omp.h
+%{_libdir}/clang/%{maj_ver}/include/omp.h
 %{_libdir}/cmake/openmp/FindOpenMPTarget.cmake
 %ifnarch %{arm}
-%{_libdir}/clang/%{libomp_version}/include/omp-tools.h
-%{_libdir}/clang/%{libomp_version}/include/ompt.h
-%{_libdir}/clang/%{libomp_version}/include/ompt-multiplex.h
+%{_libdir}/clang/%{maj_ver}/include/omp-tools.h
+%{_libdir}/clang/%{maj_ver}/include/ompt.h
+%{_libdir}/clang/%{maj_ver}/include/ompt-multiplex.h
 %endif
 %ifnarch %{ix86} %{arm}
+# libomptarget is not supported on 32-bit systems.
 %{_libdir}/libomptarget.rtl.amdgpu.so
+%{_libdir}/libomptarget.rtl.amdgpu.nextgen.so
 %{_libdir}/libomptarget.rtl.cuda.so
+%{_libdir}/libomptarget.rtl.cuda.nextgen.so
 %{_libdir}/libomptarget.rtl.%{libomp_arch}.so
+%{_libdir}/libomptarget.rtl.%{libomp_arch}.nextgen.so
 %{_libdir}/libomptarget.devicertl.a
 %{_libdir}/libomptarget-amdgpu-*.bc
 %{_libdir}/libomptarget-nvptx-*.bc
-%endif
 %{_libdir}/libomptarget.so
+%endif
 
 %if %{with testpkg}
 %files test
@@ -185,6 +207,18 @@ cd %{_vpath_builddir}
 %endif
 
 %changelog
+* Sat Jul 15 2023 Tom Stellard <tstellar@redhat.com> - 16.0.6-3
+- Remove duplicated installed binaries
+
+* Wed Jul 05 2023 Tom Stellard <tstellar@redhat.com> - 16.0.6-2
+- Add explict libomp requres to libomp-devel
+
+* Fri Jun 23 2023 Tom Stellard <tstellar@redhat.com> - 16.0.6-1
+- 16.0.6 Release
+
+* Fri Apr 28 2023 Tom Stellard <tstellar@redhat.com> - 16.0.0-1
+- Release 16.0.0
+
 * Thu Jan 19 2023 Tom Stellard <tstellar@redhat.com> - 15.0.7-1
 - Update to LLVM 15.0.7
 
